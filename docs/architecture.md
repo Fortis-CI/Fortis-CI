@@ -94,7 +94,7 @@ Because Fortis-CI identifies services using the absolute `owner/repo` string and
 
 ## 2. Business Model (Phased)
 
-### Business Phase 1 — Open Source Core (AGPL v3 License)
+### Business Phase 1 — Open Source Core (Apache 2.0 License)
 - Full deployment tracking, health monitoring, RCA engine, automated rollback
 - Maps to product **V1 – V3** features
 - Single command install via Docker Compose
@@ -135,7 +135,7 @@ Startup sequence:
 │                                                                  │
 │  Dashboard  │  Deployments  │  Graph View  │  Rollback Console  │
 └──────────────────────────┬───────────────────────────────────────┘
-                           │  REST + SSE (Server-Sent Events)
+                           │  REST + Polling (MVP)
 ┌──────────────────────────▼───────────────────────────────────────┐
 │                      Backend API                                 │
 │              (Node.js + Express + TypeScript)                    │
@@ -308,11 +308,14 @@ Startup sequence:
 
 ```cypher
 -- [Q1] Automated rollback target: last healthy deployment
-MATCH (current:Deployment {status: 'failed'})-[:DEPLOYED_TO]->(svc:Service)
+-- IMPORTANT: Traverse SUCCEEDED_BY chain only. Never traverse REPLACED_BY.
+-- REPLACED_BY is a write-only audit edge created after rollback.
+-- Traversing it would include rolled-back deployments as candidates.
+MATCH (failing:Deployment {id: $id})-[:DEPLOYED_TO]->(svc:Service)
 MATCH (prev:Deployment)-[:DEPLOYED_TO]->(svc)
-WHERE prev.timestamp < current.timestamp
-  AND prev.status = 'success'
-WITH prev ORDER BY prev.timestamp DESC LIMIT 1
+MATCH (prev)-[:SUCCEEDED_BY*]->(failing)   // traverse timeline chain only
+WHERE prev.status = 'success'               // excludes rolled_back, failed
+WITH prev ORDER BY prev.completed_at DESC LIMIT 1
 RETURN prev
 
 -- [Q2] Root cause chain: error → file → commit
@@ -351,15 +354,18 @@ ORDER BY d.timestamp ASC
 
 ### Trigger Conditions
 
-The health worker evaluates rollback eligibility after every health check cycle:
+The health worker evaluates rollback eligibility after every health check cycle using a **two-tier system**:
 
 ```
-Auto-Rollback fires when:
-  - 3 consecutive failed health checks (status: "down")
-  OR
-  - Health check status: "degraded" for > 5 minutes post-deployment
-  OR
+Tier 1 — Health-only (high reliability, no log dependency):
+  - 3 consecutive failed health checks (status: "down")         → ~2 min latency
+  - Health check status: "degraded" for > 5 minutes post-deploy → ~5 min latency
+
+Tier 2 — Error-correlated (supplemental, requires log pipeline):
   - Critical error count > 10 within 5 minutes of deployment
+
+Tier 2 adds error context to the rollback notification but does NOT block Tier 1.
+If logs haven't been fetched yet, Tier 1 fires independently based on health alone.
 ```
 
 ### Rollback Algorithm
@@ -371,14 +377,20 @@ Auto-Rollback fires when:
    a. Create RollbackEvent node
    b. Link: failing_deployment -[:TRIGGERED]-> RollbackEvent
    c. Link: RollbackEvent -[:ROLLED_BACK_TO]-> target_deployment
-   d. Trigger GitHub Actions Re-run API: POST /repos/{owner}/{repo}/actions/runs/{prev.workflow_run_id}/rerun
-   e. Send notifications (GitHub PR comment + Slack + Email)
-   f. Update deployment status to "rolled_back"
+   d. Link: failing_deployment -[:REPLACED_BY]-> target_deployment  // audit only, never traversed
+   e. Trigger GitHub Actions Re-run API: POST /repos/{owner}/{repo}/actions/runs/{prev.workflow_run_id}/rerun
+   f. Send notifications (GitHub PR comment + Slack + Email)
+   g. Update deployment status to "rolled_back"
 4. If NOT found (no clean previous deployment):
    a. Alert team via all channels
    b. Mark service as "needs_manual_intervention"
    c. Do NOT auto-rollback (too risky)
 ```
+
+**Rollback Safety — Circuit Breaker:**
+- After auto-rollback triggers, disable auto-rollback for that service for **15-minute cooldown**
+- If the rollback re-run itself fails → set service to `needs_manual_intervention` (never chain rollbacks)
+- Max rollback depth: **1** — manual rollback from dashboard is always available, even during cooldown
 
 ### Notification Payload (All 3 Channels)
 

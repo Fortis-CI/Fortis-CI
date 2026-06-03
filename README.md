@@ -5,7 +5,9 @@
 ![Type](https://img.shields.io/badge/type-Self--Hosted%20OSS-green)
 ![Status](https://img.shields.io/badge/status-In%20Development-yellow)
 
-> **Deployment graph intelligence + automated recovery + team notification**
+> **Not your CI. Your CI’s brain.**
+>
+> Deployment graph intelligence + automated recovery + team notification
 
 Fortis-CI is a **self-hosted, open-source intelligent deployment observability platform** powered by Neo4j. It is deployed as a **single centralized instance** inside your VPC, connects to GitHub Actions via webhooks (supports Organization-level webhooks for multi-repo setups), and gives your team full visibility into what's deployed, what broke, and how to fix it — automatically.
 
@@ -50,6 +52,8 @@ The entire deployment lifecycle — services, deployments, commits, files, error
 | **V4 — Ship at Scale** | 🔜 Planned | Production-ready for teams |
 
 Each version is a complete, independently shippable product.
+
+> **Scope note:** V1 ships **manual redeploy** only (trigger a re-run of a previous workflow). **Automated rollback** (health-triggered, with RCA and notifications) ships in V2.
 
 ---
 
@@ -294,7 +298,7 @@ Scripts enforce: no direct push to `main`, require commit message, run tests.
 
 | Phase | Model | Details |
 |---|---|---|
-| **Now** | Open Source (AGPL v3) | Full platform free forever |
+| **Now** | Open Source (Apache 2.0) | Full platform free forever |
 | **Phase 2** | Enterprise Edition | License key unlocks RBAC, SSO, audit logs |
 | **Phase 3** | Fortis-CI Cloud | Managed hosted offering |
 
@@ -315,5 +319,5 @@ Enterprise features are gated via `SENTINEL_LICENSE_KEY`. The core platform alwa
 
 ## License
 
-AGPL v3 — strictly open-source, free to use, modify, and self-host.
+Apache 2.0 — open-source, free to use, modify, and self-host. No copyleft restrictions.
 Enterprise features require a valid license key from `license.fortis-ci.io`.

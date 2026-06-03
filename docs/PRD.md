@@ -148,7 +148,7 @@ Instead of adding the Fortis-CI webhook URL to each of the 50 repositories indiv
 
 | Phase | Model | Features |
 |---|---|---|
-| **Phase 1** | Open Source Core (AGPL v3) | Full deployment tracking, health monitoring, RCA, rollback |
+| **Phase 1** | Open Source Core (Apache 2.0) | Full deployment tracking, health monitoring, RCA, rollback |
 | **Phase 2** | Enterprise Edition (License Key) | RBAC, SSO (SAML/OIDC), audit logs, advanced graph analytics |
 | **Phase 3** | Fortis-CI Cloud (Managed SaaS) | We host it for teams who prefer not to self-host |
 
@@ -259,6 +259,8 @@ The system must:
 - Deployment timestamp
 - Triggered by (GitHub actor)
 
+> **Missed Webhook Recovery (V2+):** GitHub webhooks can fail to deliver (network timeout, Fortis-CI downtime). The idempotency key (`workflow_run_id`) handles duplicates, but missed deliveries result in invisible deployments. A reconciliation job (`ReconcileJob`) is planned for V2+: it runs hourly, polls `GET /repos/{owner}/{repo}/actions/runs`, and backfills any `workflow_run_id` values not present in Neo4j. This is not part of V1 scope.
+
 ---
 
 ### 7.2 Graph Data Model
@@ -299,6 +301,25 @@ The system must:
 > This automatically excludes `rolled_back` status deployments.
 > `REPLACED_BY` is write-only — created for audit trail, never read in traversal.
 
+**Rollback Scenario — Edge Distinction:**
+```
+  Deploy #45 (✅ success)
+      │
+  [SUCCEEDED_BY]        ← timeline chain (traversed in rollback queries)
+      ↓
+  Deploy #46 (✅ success)
+      │
+  [SUCCEEDED_BY]        ← timeline chain (traversed in rollback queries)
+      ↓
+  Deploy #47 (🔴 failed)  ──[REPLACED_BY]──→  Deploy #46   ← audit only, NEVER traversed
+      │
+  [TRIGGERED]
+      ↓
+  RollbackEvent  ──[ROLLED_BACK_TO]──→  Deploy #46
+```
+
+> ⚠️ **WARNING:** `REPLACED_BY` is **write-only**. Never traverse `REPLACED_BY` in rollback target queries. Only `SUCCEEDED_BY` chains are followed. Traversing `REPLACED_BY` would include already-rolled-back deployments as candidates, creating infinite rollback loops.
+
 ---
 
 ### 7.3 Health Monitoring
@@ -318,6 +339,11 @@ The system must:
 | Healthy | 🟢 | `200` response, < 500ms |
 | Degraded | 🟡 | `200` response, 500ms – 2s |
 | Down | 🔴 | Timeout, non-200, or error |
+
+**Health Check Timing Guarantees:**
+- Individual health check timeout: **10 seconds** (per request)
+- If the full polling cycle across all services exceeds 60s: log a `WARN`, skip the next cycle rather than overlapping
+- At >50 services, the synchronous `p-limit` worker should be replaced with a distributed task queue (BullMQ)
 
 ---
 
@@ -360,10 +386,67 @@ Tier 2 is supplemental — it adds error context to the rollback notification bu
    c. Do NOT auto-rollback
 ```
 
-> **Advanced Rollback Mode:** If teams prefer deploying a specific SHA rather than re-running a past job, they can configure a `workflow_dispatch` trigger in their actions file. Fortis-CI supports this as a configuration option per service.
+> **Advanced Rollback Mode — `workflow_dispatch` (V3+):**
+>
+> If teams prefer deploying a specific SHA rather than re-running a past job, they can configure `rollback_strategy: 'workflow_dispatch'` on their service. This requires the target repo to have a workflow file that accepts inputs from Fortis-CI.
+>
+> **Example workflow file (`.github/workflows/fortis-rollback.yml`):**
+> ```yaml
+> name: Fortis-CI Rollback Deploy
+> on:
+>   workflow_dispatch:
+>     inputs:
+>       commit_sha:
+>         description: 'Commit SHA to deploy'
+>         required: true
+>       triggered_by:
+>         description: 'Who triggered this rollback'
+>         required: true
+>         default: 'fortis-ci-auto'
+>       reason:
+>         description: 'Rollback reason'
+>         required: false
+>
+> jobs:
+>   deploy:
+>     runs-on: ubuntu-latest
+>     steps:
+>       - uses: actions/checkout@v4
+>         with:
+>           ref: ${{ github.event.inputs.commit_sha }}
+>       - name: Deploy
+>         run: |
+>           echo "Rolling back to ${{ github.event.inputs.commit_sha }}"
+>           echo "Triggered by: ${{ github.event.inputs.triggered_by }}"
+>           # Your deployment script here
+> ```
+>
+> **Fortis-CI dispatch payload:**
+> ```json
+> POST /repos/{owner}/{repo}/actions/workflows/fortis-rollback.yml/dispatches
+> {
+>   "ref": "main",
+>   "inputs": {
+>     "commit_sha": "abc123def",
+>     "triggered_by": "fortis-ci-auto",
+>     "reason": "3 consecutive health check failures"
+>   }
+> }
+> ```
+>
+> Full spec and production-ready workflow examples will be provided in V3 documentation.
 
 **Manual Rollback:**
 User can also trigger rollback from the dashboard with a preview step showing what will change.
+
+**Rollback Safety — Circuit Breaker:**
+
+| Rule | Behavior |
+|---|---|
+| **Cooldown** | After auto-rollback triggers for a service, disable auto-rollback for that service for **15 minutes** |
+| **Rollback failure** | If the rollback re-run itself fails, set service status to `needs_manual_intervention` — do NOT trigger another rollback |
+| **Max depth** | Maximum rollback depth is **1** — never chain rollbacks (rollback of a rollback is not allowed) |
+| **Manual override** | Manual rollback from the dashboard is always available, even during cooldown |
 
 ---
 
@@ -399,6 +482,17 @@ The system must analyze deployment logs and correlate errors to code changes usi
 - `rca_status: 'pending'` — log fetch not yet complete
 - `rca_status: 'complete'` — ErrorPatterns populated
 - `rca_status: 'unavailable'` — log fetch failed (API error, rate limit)
+
+**LogFetchJob Error Handling:**
+
+| Error | Action |
+|---|---|
+| **404** (workflow deleted) | Mark `rca_status: 'unavailable'` immediately, no retry |
+| **429** (rate limited) | Exponential backoff: 30s → 60s → 120s, max 3 retries |
+| **5xx** (server error) | Retry once after 30s |
+| **Timeout** (>60s) | Abort, mark `rca_status: 'unavailable'` |
+| **Zip corrupt / unreadable** | Mark `rca_status: 'unavailable'`, log error details |
+| **All retries exhausted** | Mark `rca_status: 'unavailable'`, send warning to notification channels |
 
 The dashboard shows a loading state while `rca_status = 'pending'`.
 
@@ -462,15 +556,27 @@ GET /api/deployments/:id/compare/:prevId
 The system calculates a risk score (0.0 – 1.0) at webhook ingest time using a **two-layer approach** to handle the cold-start problem:
 
 **Layer 1 — Baseline Heuristics (works on Day 0, no history needed):**
-- Number of files changed (each file +0.02, capped at 0.3)
+- Number of files changed: each file +0.02, **capped at 0.30**
 - Diff size: additions + deletions > 200 lines → +0.15
-- High-risk file path match (regex): `auth/`, `config/`, `database`, `schema`, `migration`, `.env` → +0.2 each
-- Time of deployment: Friday 16:00–23:59 → +0.1, weekend → +0.05
+- High-risk file path match (regex): `auth/`, `config/`, `database`, `schema`, `migration`, `.env` → +0.20 each, **capped at 0.40**
+- Time of deployment: Friday 16:00–23:59 → +0.10, weekend → +0.05
+- **Final Layer 1 score: clamped to max 1.0**
 
 **Layer 2 — Graph-Enhanced (activates after 10+ deployments in history):**
 - Historical failure rate of files changed (graph query Q3)
-- Each file with > 2 prior failure appearances → +0.1 per file
-- Recent failure pattern on same service → +0.1
+- Each file with > 2 prior failure appearances → +0.10 per file, **capped at 0.30**
+- Recent failure pattern on same service → +0.10
+- **Final combined score (Layer 1 + Layer 2): clamped to max 1.0**
+
+**Worked Example (Layer 1):**
+```
+Commit touches 20 config files on a Friday at 5pm:
+  File count:    20 × 0.02 = 0.40 → capped at 0.30
+  High-risk:     20 × 0.20 = 4.00 → capped at 0.40
+  Friday deploy: +0.10
+  Layer 1 total: 0.30 + 0.40 + 0.10 = 0.80 → 🔴 High Risk
+  (Without caps: 0.40 + 4.00 + 0.10 = 4.50 — well above 1.0)
+```
 
 **Cold-start behavior:** On a fresh Fortis-CI install, only Layer 1 runs. Scores are labeled `heuristic`. After 10 deployments, Layer 2 activates and scores are labeled `graph-enhanced`. This is shown as a badge in the UI.
 
@@ -510,6 +616,9 @@ The system calculates a risk score (0.0 – 1.0) at webhook ingest time using a 
 - Never log secrets
 - Never send secret values to frontend
 - All secret values displayed as `***` everywhere
+- The `/env-drift` endpoint requires JWT authentication (same as all `/api/*` endpoints)
+- Key name exposure is an accepted, documented trade-off — key names (e.g., `STRIPE_PROD_SECRET_KEY`) may reveal which integrations exist, but this is necessary for drift detection to function
+- Fine-grained RBAC on the `/env-drift` endpoint is deferred to V4 enterprise edition
 
 ---
 
@@ -586,6 +695,9 @@ To ensure Fortis-CI can correctly map GitHub webhooks to internal running servic
 2. **GitHub Mapping (The Webhook Link):**
    - **Repository URL (String):** User inputs the exact GitHub repository URL (e.g., `https://github.com/your-org/payment-service`). 
    - **Path Filter (String, optional):** For monorepo setups, user inputs a glob pattern to scope this service to a subdirectory (e.g., `services/payment/**`). If left empty, the service matches all webhooks from the repo (standard microservice behavior).
+
+> **⚠️ Default Behavior:** If `path_filter` is empty or not set, the service matches **ALL** webhooks from the repo. This is the correct default for single-service repos. For monorepos, you **must** set a glob pattern (e.g., `services/payment/**`) to avoid creating false deployments for unrelated commits.
+
    - *Architecture Note:* This is the exact string Fortis-CI will use to match incoming `workflow_run` webhooks to this service. For monorepos, multiple services can share the same repo URL but with different `path_filter` values.
 3. **Health Monitoring Configuration:**
    - **Health Endpoint URL (String):** User inputs the internal HTTP/HTTPS URL that Fortis-CI will poll. Because Fortis-CI is self-hosted inside the VPC, this can be a private internal IP or local DNS (e.g., `http://payment-svc.internal:8080/health`).
@@ -681,6 +793,22 @@ Fortis-CI requires no pre-registration. When the first webhook arrives from an u
 - Redis cache absorbs repeated health-check dashboard reads
 - **Health Worker Concurrency:** To avoid blocking the 60s poll window, the worker uses `Promise.all` with a concurrency limiter (`p-limit`, set to 20 parallel requests).
 - **Service Limit:** The MVP recommends a ~50 service limit per instance. Beyond this, the synchronous `p-limit` health worker should be replaced with a distributed task queue (e.g., BullMQ) in V4.
+
+### Data Retention Policy
+
+To prevent unbounded graph growth, the following retention defaults apply:
+
+| Node Type | Retention | Action |
+|---|---|---|
+| Log lines | 7 days | Auto-delete (cron job) |
+| HealthCheck | 30 days | Detach and delete nodes + `HAS_HEALTH` edges |
+| ErrorPattern | 90 days | Delete with associated `CAUSED_ERROR` + `RELATED_TO_FILE` edges |
+| EnvSnapshot | 60 days | Delete with `SNAPSHOT_FOR` + `CAPTURED_ENV` edges |
+| Deployment | 90 days | Archive to stub: remove all relationships except `DEPLOYED_TO`, keep node for timeline continuity |
+| Service, Commit, File | Indefinite | Keep — these are the core graph structure |
+| RollbackEvent | Indefinite | Keep — audit trail |
+
+> **Projected growth:** A team running 50 services with 20 deploys/day accumulates ~36,500 Deployment nodes/year. Without pruning, the graph will have ~365,000 HealthCheck nodes/year (50 services × 1440 checks/day × 365 days ÷ 2 linked). The 30-day HealthCheck retention keeps this to ~2.16M nodes max.
 
 ---
 

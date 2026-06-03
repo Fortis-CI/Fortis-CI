@@ -118,7 +118,7 @@ Layer 1 (Heuristic):
 (Deployment #46) —[:SUCCEEDED_BY]→ (Deployment #47)
 ```
 
-**Step 8: Trigger async LogFetchJob** (runs in background)
+**Step 8: Trigger async LogFetchJob** (enqueued immediately after webhook processing; runs asynchronously and independently of rollback — RCA and rollback proceed in parallel)
 
 ---
 
@@ -139,14 +139,14 @@ Dashboard shows: 🔴 payment-service DOWN
 
 ## Phase 6: Auto-Rollback Engine Fires (T+3 minutes)
 
-Three consecutive `down` checks triggers the rollback engine.
+Three consecutive `down` checks triggers the rollback engine (**Tier 1 — Health-only**).
 
 **Step 1: Find rollback target**
 ```cypher
 MATCH (failing:Deployment {id: "deploy-47"})-[:DEPLOYED_TO]->(svc:Service)
 MATCH (prev:Deployment)-[:DEPLOYED_TO]->(svc)
-WHERE prev.status = 'success'
-  AND prev.completed_at < failing.completed_at
+MATCH (prev)-[:SUCCEEDED_BY*]->(failing)   // traverse timeline chain only
+WHERE prev.status = 'success'               // excludes rolled_back, failed
 WITH prev ORDER BY prev.completed_at DESC LIMIT 1
 RETURN prev
 → Returns: Deployment #46 ✅
@@ -174,11 +174,13 @@ GitHub re-runs the last successful workflow. The old, working code deploys.
 Deployment #47: status → "rolled_back"
 ```
 
+> **Safety:** Auto-rollback is now on **15-minute cooldown** for `payment-service`. If the re-run of Deployment #46 itself fails, the service is marked `needs_manual_intervention` — Fortis-CI will NOT trigger another rollback.
+
 ---
 
-## Phase 7: Root Cause Analysis (T+3 to T+5 minutes, parallel)
+## Phase 7: Root Cause Analysis (T+3 to T+5 minutes, parallel with rollback)
 
-While rollback is happening, the **LogFetchJob** is running in the background:
+The **LogFetchJob** was enqueued immediately after webhook processing (Phase 4, Step 8) and runs asynchronously, independent of the rollback engine:
 
 ```
 Step 1: GET /repos/acme/payment-service/actions/runs/{run-id}/logs
