@@ -1,0 +1,27 @@
+# sentinel-services.yml — Example Service Registry
+#
+# This file defines all services that Sentinel should track.
+# Import it via:
+#   cd backend && npm run import -- --file ../sentinel-services.example.yml
+#
+# Format:
+#   name         — internal service name (must be unique)
+#   repo         — GitHub org/repo format (matches repository.full_name in webhooks)
+#   health_url   — URL Sentinel polls every 60s (can be VPC-internal)
+#   environment  — production | staging | development (default: production)
+#   path_filter  — glob for monorepo scoping (leave empty for single-repo services)
+#   dependencies — list of other service names this depends on (creates DEPENDS_ON edges)
+
+services:
+  - name: sentinel-backend
+    repo: ganeshak11/CI-CD_Sentinel
+    health_url: http://localhost:3001/ping
+    environment: production
+    dependencies: []
+
+  - name: sentinel-frontend
+    repo: ganeshak11/CI-CD_Sentinel
+    health_url: http://localhost:3000
+    environment: production
+    path_filter: "frontend/**"
+    dependencies: [sentinel-backend]
