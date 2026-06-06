@@ -265,7 +265,8 @@ export async function getDeploymentById(
     MATCH (d:Deployment { id: $id })
     OPTIONAL MATCH (d)-[:BASED_ON]->(c:Commit)
     OPTIONAL MATCH (d)-[:DEPLOYED_TO]->(s:Service)
-    RETURN d, c, s
+    OPTIONAL MATCH (d)-[:CAUSED_ERROR]->(e:ErrorPattern)
+    RETURN d, c, s, e
   `;
 
   const result = await executeQuery(query, { id });
@@ -276,6 +277,7 @@ export async function getDeploymentById(
     ...(row.get('d').properties as Deployment),
     commit: row.get('c')?.properties ?? null,
     service: row.get('s')?.properties ?? null,
+    errorPattern: row.get('e')?.properties ?? null,
   };
 }
 
@@ -416,3 +418,161 @@ export async function getHealthHistory(
   const result = await executeQuery(query, { serviceId, limit });
   return result.records.map((row) => row.get('h').properties as HealthCheck);
 }
+
+// ─── V2: Intelligence Queries (Errors, Files, Rollbacks) ──────────────
+
+export async function createErrorPattern(
+  deploymentId: string,
+  type: string,
+  message: string,
+  confidence: number
+): Promise<void> {
+  const id = uuidv4();
+  const query = `
+    MATCH (d:Deployment { id: $deploymentId })
+    MERGE (e:ErrorPattern { type: $type, message: $message })
+    ON CREATE SET e.id = $id, e.confidence = $confidence
+    MERGE (d)-[:CAUSED_ERROR]->(e)
+  `;
+  await executeQuery(query, { deploymentId, type, message, confidence, id });
+}
+
+export async function createFileChanged(
+  commitSha: string,
+  filePath: string,
+  status: string,
+  additions: number,
+  deletions: number
+): Promise<void> {
+  const query = `
+    MATCH (c:Commit { sha: $commitSha })
+    MERGE (f:File { path: $filePath })
+    MERGE (c)-[rel:CHANGED_FILE]->(f)
+    ON CREATE SET rel.status = $status, rel.additions = $additions, rel.deletions = $deletions
+  `;
+  await executeQuery(query, { commitSha, filePath, status, additions, deletions });
+}
+
+export async function createRollbackEvent(
+  triggeredById: string,
+  rolledBackToId: string,
+  reason: string
+): Promise<void> {
+  const id = uuidv4();
+  const timestamp = new Date().toISOString();
+  const query = `
+    MATCH (bad:Deployment { id: $triggeredById })
+    MATCH (good:Deployment { id: $rolledBackToId })
+    CREATE (r:RollbackEvent { id: $id, timestamp: $timestamp, reason: $reason })
+    MERGE (bad)-[:TRIGGERED]->(r)
+    MERGE (r)-[:ROLLED_BACK_TO]->(good)
+  `;
+  await executeQuery(query, { triggeredById, rolledBackToId, reason, id, timestamp });
+}
+
+export async function findLastHealthyDeployment(serviceId: string): Promise<Deployment | null> {
+  // Find a deployment for the service that doesn't have an error and its latest health check isn't 'down'
+  const query = `
+    MATCH (d:Deployment)-[:DEPLOYED_TO]->(s:Service { id: $serviceId })
+    OPTIONAL MATCH (d)-[:CAUSED_ERROR]->(e:ErrorPattern)
+    OPTIONAL MATCH (d)-[:HAS_HEALTH]->(h:HealthCheck)
+    WITH d, e, h
+    ORDER BY h.checkedAt DESC
+    WITH d, collect(e) as errors, collect(h)[0] as latestHealth
+    WHERE size(errors) = 0 AND (latestHealth IS NULL OR latestHealth.status = 'healthy')
+    RETURN d
+    ORDER BY d.startedAt DESC
+    LIMIT 1
+  `;
+  const result = await executeQuery(query, { serviceId });
+  if (result.records.length === 0) return null;
+  return result.records[0].get('d').properties as Deployment;
+}
+
+export async function setDeploymentRiskScore(deploymentId: string, score: number, label: string): Promise<void> {
+  const query = `
+    MATCH (d:Deployment { id: $deploymentId })
+    SET d.riskScore = $score, d.riskLabel = $label
+  `;
+  await executeQuery(query, { deploymentId, score, label });
+}
+
+// ─── V3: Intelligence Queries (Env Drift, Graph Scoring) ──────────────
+
+export async function createEnvSnapshot(
+  deploymentId: string,
+  secrets: { name: string; updated_at: string }[]
+): Promise<void> {
+  const secretsJSON = JSON.stringify(secrets);
+  const id = 'env_' + deploymentId;
+  const query = `
+    MATCH (d:Deployment { id: $deploymentId })
+    MERGE (e:EnvSnapshot { id: $id })
+    ON CREATE SET e.secrets = $secretsJSON
+    ON MATCH SET e.secrets = $secretsJSON
+    MERGE (d)-[:HAS_ENV]->(e)
+  `;
+  await executeQuery(query, { deploymentId, id, secretsJSON });
+}
+
+export async function getPreviousEnvSnapshot(
+  deploymentId: string
+): Promise<{ secrets: { name: string; updated_at: string }[] } | null> {
+  const query = `
+    MATCH (curr:Deployment { id: $deploymentId })
+    MATCH (prev:Deployment)-[:SUCCEEDED_BY]->(curr)
+    MATCH (prev)-[:HAS_ENV]->(e:EnvSnapshot)
+    RETURN e
+    LIMIT 1
+  `;
+  const result = await executeQuery(query, { deploymentId });
+  if (result.records.length === 0) return null;
+  const e = result.records[0].get('e').properties;
+  return {
+    secrets: JSON.parse(e.secrets || '[]')
+  };
+}
+
+export async function getFileFailureCount(filePath: string): Promise<number> {
+  const query = `
+    MATCH (f:File { path: $filePath })<-[:CHANGED_FILE|RELATED_TO_FILE]-(c:Commit)<-[:BASED_ON]-(d:Deployment)
+    WHERE d.conclusion = 'failure' OR (d)-[:CAUSED_ERROR]->(:ErrorPattern)
+    RETURN count(DISTINCT d) AS failureCount
+  `;
+  const result = await executeQuery(query, { filePath });
+  if (result.records.length === 0) return 0;
+  return result.records[0].get('failureCount').toNumber();
+}
+
+export async function getRollbackPreview(deploymentId: string): Promise<any> {
+  const query = `
+    MATCH (bad:Deployment { id: $deploymentId })-[:DEPLOYED_TO]->(s:Service)
+    OPTIONAL MATCH (bad)-[:BASED_ON]->(badC:Commit)-[rel:CHANGED_FILE]->(f:File)
+    WITH bad, s, badC, count(f) as filesChanged
+    
+    // Find last healthy
+    OPTIONAL MATCH (good:Deployment)-[:DEPLOYED_TO]->(s)
+    WHERE good.id <> bad.id 
+      AND NOT (good)-[:CAUSED_ERROR]->(:ErrorPattern)
+    WITH bad, s, filesChanged, good
+    ORDER BY good.startedAt DESC
+    LIMIT 1
+    
+    OPTIONAL MATCH (good)-[:BASED_ON]->(goodC:Commit)
+    
+    // Blast radius
+    OPTIONAL MATCH (s)<-[:DEPENDS_ON]-(dep:Service)
+    WITH bad, s, filesChanged, good, goodC, collect(dep.name) as blastRadius
+    
+    RETURN {
+      targetId: good.id,
+      targetSha: goodC.sha,
+      filesChanged: filesChanged,
+      blastRadius: blastRadius
+    } as preview
+  `;
+  const result = await executeQuery(query, { deploymentId });
+  if (result.records.length === 0) return null;
+  return result.records[0].get('preview');
+}
+

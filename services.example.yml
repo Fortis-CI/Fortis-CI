@@ -1,0 +1,17 @@
+# Fortis-CI Service Registry Example (Meta-Demo)
+
+services:
+  - name: fortis-ci-frontend
+    repoUrl: ganeshak11/Fortis-CI
+    healthEndpoint: http://frontend:3000/api/health
+    environment: production
+    dependencies:
+      - fortis-ci-backend
+
+  - name: fortis-ci-backend
+    repoUrl: ganeshak11/Fortis-CI
+    healthEndpoint: http://backend:3001/api/health
+    environment: production
+    dependencies:
+      - neo4j
+      - redis

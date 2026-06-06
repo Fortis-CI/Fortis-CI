@@ -4,11 +4,15 @@
  * GET  /api/deployments           — paginated deployment list
  * GET  /api/deployments/:id       — single deployment + commit detail
  * POST /api/deployments/:id/redeploy — trigger manual redeploy via GitHub Actions
+ * GET  /api/deployments/:id/rollback-preview — preview rollback impact
+ * POST /api/deployments/:id/rollback — trigger manual rollback to last healthy
  */
 
 import { Router } from 'express';
-import { getDeployments, getDeploymentById } from '../services/graphService';
+import { getDeployments, getDeploymentById, getRollbackPreview } from '../services/graphService';
 import { rerunWorkflow, parseRepoUrl } from '../services/github.service';
+import { getEnvDriftForDeployment } from '../services/envDrift.service';
+import { triggerRollback } from '../services/rollbackEngine';
 
 const router = Router();
 
@@ -102,6 +106,55 @@ router.post('/:id/redeploy', async (req, res) => {
   } catch (err) {
     console.error('[deployment.routes] POST /deployments/:id/redeploy error:', err);
     res.status(500).json({ error: 'Failed to trigger redeploy' });
+  }
+});
+
+// GET /api/deployments/:id/env-drift
+router.get('/:id/env-drift', async (req, res) => {
+  try {
+    const drift = await getEnvDriftForDeployment(req.params.id);
+    res.json({ data: drift });
+  } catch (err) {
+    console.error('[deployment.routes] GET /deployments/:id/env-drift error:', err);
+    res.status(500).json({ error: 'Failed to fetch env drift' });
+  }
+});
+
+// GET /api/deployments/:id/rollback-preview
+router.get('/:id/rollback-preview', async (req, res) => {
+  try {
+    const preview = await getRollbackPreview(req.params.id);
+    if (!preview) {
+      res.status(404).json({ error: 'No healthy deployment found to rollback to' });
+      return;
+    }
+    res.json({ data: preview });
+  } catch (err) {
+    console.error('[deployment.routes] GET /deployments/:id/rollback-preview error:', err);
+    res.status(500).json({ error: 'Failed to generate rollback preview' });
+  }
+});
+
+// POST /api/deployments/:id/rollback
+router.post('/:id/rollback', async (req, res) => {
+  try {
+    const deployment = await getDeploymentById(req.params.id);
+    if (!deployment || !deployment.serviceId) {
+      res.status(404).json({ error: 'Deployment or service not found' });
+      return;
+    }
+    
+    await triggerRollback(
+      deployment.serviceId,
+      deployment.id,
+      deployment.commitSha || deployment.commit?.sha || '',
+      'Manual rollback triggered via dashboard'
+    );
+    
+    res.json({ message: 'Rollback initiated successfully' });
+  } catch (err) {
+    console.error('[deployment.routes] POST /deployments/:id/rollback error:', err);
+    res.status(500).json({ error: 'Failed to trigger rollback' });
   }
 });
 

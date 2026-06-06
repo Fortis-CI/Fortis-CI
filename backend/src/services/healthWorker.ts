@@ -13,9 +13,15 @@
 
 import cron from 'node-cron';
 import axios from 'axios';
-import { getAllServices, createHealthCheck } from './graphService';
+import { createHealthCheck, getAllServices } from './graphService';
 import { cacheHealthStatus } from '../db/redis';
-import { HealthStatus } from '../types/deployment.types';
+import { HealthStatus, Deployment } from '../types/deployment.types';
+import { triggerRollback } from './rollbackEngine';
+
+const PING_INTERVAL = 60 * 1000; // 60 seconds
+
+// Track consecutive failures per service for Tier 1 Rollback
+const consecutiveFailures = new Map<string, number>();
 
 /**
  * Simple concurrency limiter — runs at most N promises concurrently.
@@ -64,7 +70,8 @@ const HEALTHY_THRESHOLD_MS = 500;
 async function checkServiceHealth(
   serviceId: string,
   serviceName: string,
-  healthEndpoint: string
+  healthEndpoint: string,
+  latestDeployment?: Deployment | null
 ): Promise<void> {
   let status: HealthStatus = 'unknown';
   let statusCode: number | null = null;
@@ -101,6 +108,25 @@ async function checkServiceHealth(
     } else {
       error = err.message || 'Unknown error';
     }
+  }
+
+  // Tier 1 Rollback Logic
+  if (status === 'unhealthy') {
+    const fails = (consecutiveFailures.get(serviceId) || 0) + 1;
+    consecutiveFailures.set(serviceId, fails);
+    
+    if (fails >= 3 && latestDeployment?.id) {
+      console.log(`[HealthWorker] Service ${serviceName} failed 3 checks in a row! Triggering Tier 1 Rollback.`);
+      triggerRollback(
+        serviceId,
+        latestDeployment.id,
+        'unknown', // Commit sha is not readily available here without an extra query
+        'Service failed 3 consecutive health checks'
+      ).catch(err => console.error('[HealthWorker] Failed to trigger rollback:', err));
+    }
+  } else if (status === 'healthy') {
+    // Reset failures on success
+    consecutiveFailures.delete(serviceId);
   }
 
   // Persist to Neo4j
@@ -150,7 +176,7 @@ async function runHealthCheckCycle(): Promise<void> {
     const servicesToCheck = services.filter((svc) => svc.healthEndpoint);
 
     const tasks = servicesToCheck.map((svc) => () =>
-      checkServiceHealth(svc.id, svc.name, svc.healthEndpoint)
+      checkServiceHealth(svc.id, svc.name, svc.healthEndpoint, svc.latestDeployment)
     );
 
     await concurrencyLimit(tasks, MAX_CONCURRENCY);

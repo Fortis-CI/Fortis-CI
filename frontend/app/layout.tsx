@@ -1,6 +1,6 @@
 import React from 'react';
 import './globals.css';
-import Sidebar from '../components/Sidebar';
+import SetupGuard from '../components/SetupGuard';
 
 export const metadata = {
   title: 'Fortis-CI — Deployment Intelligence',
@@ -16,12 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="app-layout">
-          <Sidebar />
-          <main className="main-content">
-            {children}
-          </main>
-        </div>
+        <SetupGuard>
+          {children}
+        </SetupGuard>
       </body>
     </html>
   );

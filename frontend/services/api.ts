@@ -99,6 +99,28 @@ export async function triggerRedeploy(id: string): Promise<{ message: string }> 
   return apiFetch(`/api/deployments/${id}/redeploy`, { method: 'POST' });
 }
 
+export async function fetchEnvDrift(id: string): Promise<{ added: string[], removed: string[], modified: string[] } | null> {
+  try {
+    const res = await apiFetch<ApiResponse<{ added: string[], removed: string[], modified: string[] }>>(`/api/deployments/${id}/env-drift`);
+    return res.data;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function fetchRollbackPreview(id: string): Promise<any> {
+  try {
+    const res = await apiFetch<ApiResponse<any>>(`/api/deployments/${id}/rollback-preview`);
+    return res.data;
+  } catch (err) {
+    return null;
+  }
+}
+
+export async function triggerManualRollback(id: string): Promise<{ message: string }> {
+  return apiFetch(`/api/deployments/${id}/rollback`, { method: 'POST' });
+}
+
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 export async function fetchHealthStatus(): Promise<ServiceWithHealth[]> {

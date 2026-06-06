@@ -16,6 +16,7 @@ import {
   createDependsOn,
   deleteService,
 } from '../services/graphService';
+import { getMaxServicesAllowed } from '../services/license.service';
 
 const router = Router();
 
@@ -49,6 +50,13 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { name, repoUrl, healthEndpoint, environment, dependencies } = req.body;
+
+    // License Check
+    const currentServices = await getAllServices();
+    if (currentServices.length >= getMaxServicesAllowed()) {
+      res.status(403).json({ error: 'Free tier limit reached (3 services max). Please upgrade to Enterprise.' });
+      return;
+    }
 
     // Validate required fields
     if (!name || !repoUrl || !healthEndpoint) {
@@ -97,6 +105,15 @@ router.post('/import', async (req, res) => {
       res.status(400).json({
         error: 'Request body must contain a "services" array',
       });
+      return;
+    }
+
+    // License Check
+    const currentServices = await getAllServices();
+    const maxAllowed = getMaxServicesAllowed();
+    
+    if (currentServices.length + services.length > maxAllowed) {
+      res.status(403).json({ error: `Cannot import ${services.length} services. Free tier limit is ${maxAllowed}.` });
       return;
     }
 

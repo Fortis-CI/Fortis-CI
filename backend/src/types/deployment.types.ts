@@ -39,6 +39,8 @@ export interface Deployment {
   completedAt: string | null;
   duration: number | null; // seconds
   serviceId: string;
+  riskScore?: number;
+  riskLabel?: string;
 }
 
 export interface CreateDeploymentInput {
@@ -95,7 +97,15 @@ export interface ServiceWithHealth extends Service {
   latestHealth: HealthCheck | null;
 }
 
+export interface ErrorPattern {
+  id: string;
+  type: string;
+  message: string;
+  confidence: number;
+}
+
 export interface DeploymentWithCommit extends Deployment {
   commit: Commit | null;
   service?: Service | null;
+  errorPattern?: ErrorPattern | null;
 }

@@ -38,11 +38,21 @@ export interface Deployment {
   completedAt: string | null;
   duration: number | null;
   serviceId: string;
+  riskScore?: number;
+  riskLabel?: string;
+}
+
+export interface ErrorPattern {
+  id: string;
+  type: string;
+  message: string;
+  confidence: number;
 }
 
 export interface DeploymentWithCommit extends Deployment {
   commit: Commit | null;
   service?: Service | null;
+  errorPattern?: ErrorPattern | null;
 }
 
 // ─── Commit ───────────────────────────────────────────────────────────────────

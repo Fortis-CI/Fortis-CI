@@ -20,9 +20,12 @@ const envSchema = z.object({
   // Redis
   REDIS_URL: z.string().default('redis://localhost:6379'),
 
-  // GitHub
-  GITHUB_TOKEN: z.string().min(1, 'GITHUB_TOKEN is required'),
-  GITHUB_WEBHOOK_SECRET: z.string().min(1, 'GITHUB_WEBHOOK_SECRET is required'),
+  // GitHub (Optional initially, filled via setup wizard)
+  GITHUB_TOKEN: z.string().optional(),
+  GITHUB_WEBHOOK_SECRET: z.string().optional(),
+
+  // Enterprise License
+  SENTINEL_LICENSE_KEY: z.string().optional(),
 
   // App
   PORT: z.string().default('3001').transform(Number),

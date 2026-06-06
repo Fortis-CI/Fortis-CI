@@ -15,6 +15,10 @@ import {
   findServiceByRepoUrl,
   linkSucceededBy,
 } from '../services/graphService';
+import { analyzeGitDiff } from '../services/gitAnalyzer';
+import { analyzeDeploymentLogs } from '../services/rcaEngine';
+import { analyzeEnvDrift } from '../services/envDrift.service';
+import { analyzePullRequest } from '../services/governance';
 import { GitHubWorkflowRunPayload } from '../types/webhook.types';
 import { DeploymentStatus, DeploymentConclusion } from '../types/deployment.types';
 
@@ -47,12 +51,25 @@ function mapConclusion(ghConclusion: string | null): DeploymentConclusion {
  */
 export async function handleGitHubWebhook(req: Request, res: Response): Promise<void> {
   try {
-    const payload: GitHubWorkflowRunPayload = JSON.parse(req.body.toString());
-    const { action, workflow_run } = payload;
+    const payload: any = JSON.parse(req.body.toString());
+    const { action, workflow_run, pull_request, repository } = payload;
 
-    // We only care about workflow_run events
+    // ─── V3: PR Governance Hooks ───
+    if (pull_request && (action === 'opened' || action === 'synchronize')) {
+      const repoFullName = repository?.full_name;
+      if (repoFullName) {
+        const [owner, repo] = repoFullName.split('/');
+        analyzePullRequest(owner, repo, pull_request.number).catch(err => 
+          console.error('[Webhook] PR Governance error:', err)
+        );
+      }
+      res.status(200).json({ message: 'PR Governance check triggered' });
+      return;
+    }
+
+    // We only care about workflow_run events otherwise
     if (!workflow_run) {
-      res.status(200).json({ message: 'Not a workflow_run event — skipped' });
+      res.status(200).json({ message: 'Event skipped' });
       return;
     }
 
@@ -113,6 +130,26 @@ export async function handleGitHubWebhook(req: Request, res: Response): Promise<
 
     // Step 4: Link SUCCEEDED_BY to previous deployment on the same service
     await linkSucceededBy(service.id, deployment.id);
+
+    // Step 5: V2 Intelligence Layer (Async Triggers)
+    const [owner, repo] = repoFullName.split('/');
+
+    if (action === 'requested' || action === 'in_progress') {
+      // Async fire-and-forget
+      analyzeGitDiff(owner, repo, workflow_run.head_sha, deployment.id).catch(err => 
+        console.error('[Webhook] Failed to analyze git diff:', err)
+      );
+      analyzeEnvDrift(deployment.id, owner, repo).catch(err =>
+        console.error('[Webhook] Failed to analyze env drift:', err)
+      );
+    }
+
+    if (action === 'completed' && workflow_run.conclusion === 'failure') {
+      // Async fire-and-forget
+      analyzeDeploymentLogs(owner, repo, workflow_run.id, deployment.id).catch(err =>
+        console.error('[Webhook] Failed to analyze logs:', err)
+      );
+    }
 
     res.status(200).json({
       message: 'Webhook processed successfully',

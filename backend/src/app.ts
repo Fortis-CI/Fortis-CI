@@ -22,12 +22,15 @@ import { applySchema } from './db/applySchema';
 import { connectRedis, redisClient } from './db/redis';
 import { startHealthWorker } from './services/healthWorker';
 import { importYamlServices } from './utils/yamlParser';
+import { validateLicense } from './services/license.service';
 
 // Route imports
 import deploymentRoutes from './routes/deployment.routes';
 import healthRoutes from './routes/health.routes';
 import webhookRoutes from './routes/webhook.routes';
 import serviceRoutes from './routes/service.routes';
+import graphRoutes from './routes/graph.routes';
+import setupRoutes from './routes/setup.routes';
 
 const app = express();
 
@@ -61,6 +64,8 @@ app.get('/ping', (_req, res) => {
 app.use('/api/services', serviceRoutes);
 app.use('/api/deployments', deploymentRoutes);
 app.use('/api/health-status', healthRoutes);
+app.use('/api/graph', graphRoutes);
+app.use('/api/setup', setupRoutes);
 app.use('/webhooks', webhookRoutes);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
@@ -86,6 +91,9 @@ async function start() {
   try {
     console.log('[Fortis-CI] Starting backend...');
     console.log(`[Fortis-CI] Environment: ${config.NODE_ENV}`);
+
+    // 0. Validate Enterprise License
+    await validateLicense();
 
     // 1. Verify Neo4j connection
     await driver.verifyConnectivity();
