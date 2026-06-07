@@ -42,6 +42,7 @@ export async function analyzeGitDiff(
         file.additions,
         file.deletions
       );
+    }
 
     const fileNames = files.map((f: any) => f.filename);
     
