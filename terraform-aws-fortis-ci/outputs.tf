@@ -1,14 +1,14 @@
-output "cluster_name" {
-  description = "The name of the deployed ECS cluster"
-  value       = aws_ecs_cluster.fortis_ci.name
+output "fortis_ci_public_ip" {
+  description = "The public IP of the Fortis-CI EC2 instance"
+  value       = aws_instance.fortis_ci.public_ip
 }
 
-output "ecs_service_name" {
-  description = "The name of the ECS service"
-  value       = aws_ecs_service.fortis_ci_service.name
+output "fortis_ci_private_ip" {
+  description = "The private IP of the Fortis-CI EC2 instance for internal ArgoCD communication"
+  value       = aws_instance.fortis_ci.private_ip
 }
 
-output "task_definition_arn" {
-  description = "The ARN of the Fortis-CI task definition"
-  value       = aws_ecs_task_definition.fortis_ci.arn
+output "fortis_ci_domain" {
+  description = "The nip.io domain for HTTPS access"
+  value       = "fortis.${replace(aws_instance.fortis_ci.public_ip, ".", "-")}.nip.io"
 }
