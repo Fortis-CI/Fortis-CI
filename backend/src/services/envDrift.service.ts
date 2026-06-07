@@ -111,8 +111,8 @@ export async function getEnvDriftForDeployment(deploymentId: string): Promise<Dr
   const currentSecrets = JSON.parse(currEnvStr);
   const prevSecrets = prevEnvStr ? JSON.parse(prevEnvStr) : [];
 
-  const prevMap = new Map(prevSecrets.map((s: any) => [s.name, s.updated_at]));
-  const currMap = new Map(currentSecrets.map((s: any) => [s.name, s.updated_at]));
+  const prevMap = new Map<string, string>(prevSecrets.map((s: any) => [s.name, s.updated_at]));
+  const currMap = new Map<string, string>(currentSecrets.map((s: any) => [s.name, s.updated_at]));
 
   const added: string[] = [];
   const removed: string[] = [];

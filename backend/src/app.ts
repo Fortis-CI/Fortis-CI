@@ -51,7 +51,10 @@ app.use(
 // Request logging
 app.use(morgan('dev'));
 
-// JSON body parsing (webhook route uses express.raw() separately for HMAC)
+// Mount webhooks FIRST so express.raw() can capture the Buffer for HMAC verification
+app.use('/webhooks', webhookRoutes);
+
+// JSON body parsing for all other routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -66,7 +69,6 @@ app.use('/api/deployments', deploymentRoutes);
 app.use('/api/health-status', healthRoutes);
 app.use('/api/graph', graphRoutes);
 app.use('/api/setup', setupRoutes);
-app.use('/webhooks', webhookRoutes);
 
 // ─── 404 handler ─────────────────────────────────────────────────────────────
 app.use((_req, res) => {
@@ -108,6 +110,11 @@ async function start() {
     // 4. Auto-import services from YAML (if present)
     await importYamlServices('/app/config/services.yml');
     await importYamlServices('../sentinel-services.example.yml'); // Fallback for local testing
+    await importYamlServices('/home/ganeshak11/dev/ticketflow/services.yml');
+
+    // 4.5 Auto-import infra contract
+    const { importInfraContract } = await import('./utils/infraContractParser');
+    await importInfraContract('/home/ganeshak11/dev/ticketflow/ticketflow-infra/outputs.json');
 
     // 5. Start health worker (60s polling cron)
     await startHealthWorker();

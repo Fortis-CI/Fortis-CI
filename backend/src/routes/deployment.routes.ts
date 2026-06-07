@@ -147,7 +147,7 @@ router.post('/:id/rollback', async (req, res) => {
     await triggerRollback(
       deployment.serviceId,
       deployment.id,
-      deployment.commitSha || deployment.commit?.sha || '',
+      deployment.commit?.sha || '',
       'Manual rollback triggered via dashboard'
     );
     

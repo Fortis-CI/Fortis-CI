@@ -10,7 +10,7 @@ services:
 
   - name: fortis-ci-backend
     repoUrl: ganeshak11/Fortis-CI
-    healthEndpoint: http://backend:3001/api/health
+    healthEndpoint: http://backend:3001/api/health-status
     environment: production
     dependencies:
       - neo4j

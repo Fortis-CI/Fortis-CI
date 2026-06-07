@@ -11,6 +11,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
+import { classifyArgoCDFailure, classifyHealthIncident } from './rcaClassifier';
 import neo4j from 'neo4j-driver';
 import { executeQuery } from '../db/index';
 import {
@@ -44,11 +45,13 @@ export async function createService(input: CreateServiceInput): Promise<Service>
       s.repoUrl         = $repoUrl,
       s.healthEndpoint  = $healthEndpoint,
       s.environment     = $environment,
-      s.createdAt       = $createdAt
+      s.createdAt       = $createdAt,
+      s.discoveryMethod = 'services.yml'
     ON MATCH SET
       s.repoUrl         = $repoUrl,
       s.healthEndpoint  = $healthEndpoint,
-      s.environment     = $environment
+      s.environment     = $environment,
+      s.discoveryMethod = 'services.yml'
     RETURN s
   `;
 
@@ -152,21 +155,85 @@ export async function deleteService(id: string): Promise<boolean> {
   return deleted > 0;
 }
 
-/**
- * Create a DEPENDS_ON relationship between two services.
- * Used during service registration with dependencies.
- */
-export async function createDependsOn(
+export async function createDependsOnService(
   serviceId: string,
-  dependencyName: string
+  dependencyName: string,
+  criticality: 'hard' | 'soft'
 ): Promise<void> {
   const query = `
     MATCH (s:Service { id: $serviceId })
-    MATCH (dep:Service { name: $dependencyName })
-    MERGE (s)-[:DEPENDS_ON]->(dep)
+    MERGE (dep:Service { name: $dependencyName })
+    ON CREATE SET
+      dep.id = randomUUID(),
+      dep.environment = s.environment,
+      dep.discoveryMethod = 'inferred'
+    MERGE (s)-[r:DEPENDS_ON_SERVICE]->(dep)
+    ON CREATE SET r.criticality = $criticality
+    ON MATCH SET r.criticality = $criticality
   `;
 
-  await executeQuery(query, { serviceId, dependencyName });
+  await executeQuery(query, { serviceId, dependencyName, criticality });
+}
+
+export async function createLogicalResource(name: string, type: string): Promise<void> {
+  const query = `
+    MERGE (lr:LogicalResource { logicalName: $name })
+    ON CREATE SET
+      lr.id = randomUUID(),
+      lr.type = $type,
+      lr.discoveryMethod = 'services.yml'
+    ON MATCH SET
+      lr.type = $type
+  `;
+  await executeQuery(query, { name, type });
+}
+
+export async function createDependsOnResource(
+  serviceId: string,
+  resourceName: string
+): Promise<void> {
+  const query = `
+    MATCH (s:Service { id: $serviceId })
+    MATCH (lr:LogicalResource { logicalName: $resourceName })
+    MERGE (s)-[:DEPENDS_ON_RESOURCE]->(lr)
+  `;
+  await executeQuery(query, { serviceId, resourceName });
+}
+
+export async function createPhysicalInfra(
+  id: string,
+  name: string,
+  type: string,
+  provider: string,
+  environmentName: string
+): Promise<void> {
+  const query = `
+    MERGE (env:Environment { name: $environmentName })
+    MERGE (pi:PhysicalInfra { id: $id })
+    ON CREATE SET
+      pi.name = $name,
+      pi.type = $type,
+      pi.provider = $provider,
+      pi.discoveryMethod = 'contract'
+    ON MATCH SET
+      pi.name = $name,
+      pi.type = $type,
+      pi.provider = $provider
+    MERGE (pi)-[:RUNS_IN]->(env)
+  `;
+  await executeQuery(query, { id, name, type, provider, environmentName });
+}
+
+export async function linkHostedOn(
+  logicalResourceName: string,
+  physicalInfraId: string
+): Promise<void> {
+  const query = `
+    MATCH (lr:LogicalResource { logicalName: $logicalResourceName })
+    MATCH (pi:PhysicalInfra { id: $physicalInfraId })
+    MERGE (lr)-[:HOSTED_ON]->(pi)
+  `;
+  await executeQuery(query, { logicalResourceName, physicalInfraId });
 }
 
 // ─── Deployment Queries ───────────────────────────────────────────────────────
@@ -489,12 +556,14 @@ export async function findLastHealthyDeployment(serviceId: string): Promise<Depl
   return result.records[0].get('d').properties as Deployment;
 }
 
-export async function setDeploymentRiskScore(deploymentId: string, score: number, label: string): Promise<void> {
+export async function setDeploymentRiskScore(deploymentId: string, score: number, label: string, hasStatefulChanges: boolean = false): Promise<void> {
   const query = `
     MATCH (d:Deployment { id: $deploymentId })
-    SET d.riskScore = $score, d.riskLabel = $label
+    SET d.riskScore = $score, 
+        d.riskLabel = $label,
+        d.hasStatefulChanges = $hasStatefulChanges
   `;
-  await executeQuery(query, { deploymentId, score, label });
+  await executeQuery(query, { deploymentId, score, label, hasStatefulChanges });
 }
 
 // ─── V3: Intelligence Queries (Env Drift, Graph Scoring) ──────────────
@@ -576,3 +645,179 @@ export async function getRollbackPreview(deploymentId: string): Promise<any> {
   return result.records[0].get('preview');
 }
 
+// ─── V2: ArgoCD / GitOps Queries ────────────────────────────────────────
+
+export async function createOrUpdateRollout(input: {
+  serviceName: string;
+  infraCommitSha: string;
+  imageTag: string;
+  status: string;
+  timestamp: string;
+  errorMessage?: string;
+}): Promise<void> {
+  // Use a UUID for Rollout, but we need to find it if it already exists for this infraCommitSha & serviceName
+  const artifactId = input.serviceName + '_' + input.imageTag;
+  
+  let failureCategory = null;
+  let confidenceScore = null;
+  let rootCauseCommit = null;
+
+  if (input.status === 'failed') {
+    const classification = classifyArgoCDFailure(input.errorMessage || '');
+    failureCategory = classification.category;
+    confidenceScore = classification.confidenceScore;
+    // If it's a deployment failure, the root cause is the InfraCommit. Otherwise it traces back to the Artifact's AppCommit.
+    rootCauseCommit = failureCategory === 'DEPLOYMENT_FAILURE' ? input.infraCommitSha : null;
+  }
+  
+  const query = `
+    // 1. Ensure Service exists
+    MATCH (s:Service { name: $serviceName })
+    
+    // 2. Ensure Artifact exists with compound ID
+    MERGE (a:Artifact { id: $artifactId })
+    ON CREATE SET a.tag = $imageTag, a.service = $serviceName
+    
+    // 3. Ensure InfraCommit exists
+    MERGE (ic:InfraCommit { sha: $infraCommitSha })
+    MERGE (a)-[:TRIGGERS_UPDATE]->(ic)
+    
+    // 4. Find or Create Rollout node using UUID
+    MERGE (ic)-[:RESULTS_IN]->(r:Rollout { serviceName: $serviceName, infraCommitSha: $infraCommitSha })
+    ON CREATE SET 
+      r.id = randomUUID(),
+      r.startedAt = $timestamp,
+      r.status = $status
+    ON MATCH SET
+      r.status = $status,
+      r.completedAt = CASE WHEN $status IN ['success', 'failed'] THEN $timestamp ELSE r.completedAt END,
+      r.durationMs = CASE WHEN $status IN ['success', 'failed'] THEN duration.inMilliseconds(datetime(r.startedAt), datetime($timestamp)).milliseconds ELSE r.durationMs END
+    
+    // Set classification properties if present
+    SET r.failureCategory = CASE WHEN $failureCategory IS NOT NULL THEN $failureCategory ELSE r.failureCategory END,
+        r.confidenceScore = CASE WHEN $confidenceScore IS NOT NULL THEN $confidenceScore ELSE r.confidenceScore END,
+        r.rootCauseCommit = CASE WHEN $rootCauseCommit IS NOT NULL THEN $rootCauseCommit ELSE r.rootCauseCommit END
+
+    // 5. Link to Service
+    MERGE (r)-[:DEPLOYED_TO]->(s)
+  `;
+  
+  await executeQuery(query, {
+    serviceName: input.serviceName,
+    infraCommitSha: input.infraCommitSha,
+    imageTag: input.imageTag,
+    status: input.status,
+    timestamp: input.timestamp,
+    artifactId,
+    failureCategory,
+    confidenceScore,
+    rootCauseCommit
+  });
+}
+
+export async function createHealthIncident(
+  serviceName: string,
+  infraCommitSha: string,
+  timestamp: string,
+  errorMessage?: string
+): Promise<void> {
+  const incidentId = uuidv4();
+  
+  let failureCategory = null;
+  let confidenceScore = null;
+  let rootCauseCommit = null;
+
+  if (errorMessage) {
+    const classification = classifyHealthIncident(errorMessage);
+    failureCategory = classification.category;
+    confidenceScore = classification.confidenceScore;
+    // Health incidents currently default to tracing back to the application commit (we leave this null to force the query to jump to AppCommit)
+    // If it's INFRASTRUCTURE_FAILURE we wouldn't set a commit at all.
+  }
+  
+  const query = `
+    MATCH (r:Rollout { serviceName: $serviceName, infraCommitSha: $infraCommitSha })
+    MATCH (s:Service { name: $serviceName })
+    CREATE (hi:HealthIncident { 
+      id: $incidentId, 
+      timestamp: $timestamp,
+      failureCategory: $failureCategory,
+      confidenceScore: $confidenceScore
+    })
+    MERGE (r)-[:PRECEDES]->(hi)
+    MERGE (s)-[:EXPERIENCED]->(hi)
+  `;
+  
+  await executeQuery(query, { serviceName, infraCommitSha, incidentId, timestamp, failureCategory, confidenceScore });
+  
+  // After creating a new incident, trigger the blast radius cluster evaluation
+  await evaluateBlastRadius();
+}
+
+/**
+ * Event Correlation Clustering (Max 5m window, 30s quiet period).
+ * Groups recent isolated HealthIncidents into a BlastRadiusEvent 
+ * and calculates the Lowest Common Ancestor.
+ */
+export async function evaluateBlastRadius(): Promise<void> {
+  const query = `
+    // 1. Find recent unclustered HealthIncidents
+    MATCH (hi:HealthIncident)
+    WHERE NOT (hi)<-[:IMPACTS]-(:BlastRadiusEvent)
+      AND duration.inSeconds(datetime(hi.timestamp), datetime()).seconds < 300 // Max 5m window
+    WITH collect(hi) AS recentIncidents
+    
+    // Require at least 2 incidents to form a cluster
+    WHERE size(recentIncidents) > 1
+    
+    // Ensure quiet period: latest incident must be at least 30s old to close the cluster
+    WITH recentIncidents, [inc IN recentIncidents | inc.timestamp] AS timestamps
+    UNWIND timestamps AS ts
+    WITH recentIncidents, max(datetime(ts)) AS latestTs
+    WHERE duration.inSeconds(latestTs, datetime()).seconds > 30
+
+    // 2. Create the BlastRadiusEvent cluster
+    CREATE (bre:BlastRadiusEvent {
+      id: randomUUID(),
+      timestamp: datetime().toString(),
+      status: 'active'
+    })
+    WITH bre, recentIncidents
+    
+    // 3. Link incidents to cluster
+    UNWIND recentIncidents AS hi
+    MERGE (bre)-[:IMPACTS]->(hi)
+    WITH bre, hi
+    
+    // 4. Find Lowest Common Ancestor (PhysicalInfra)
+    MATCH (hi)<-[:EXPERIENCED]-(s:Service)-[:DEPENDS_ON_RESOURCE]->(lr:LogicalResource)-[:HOSTED_ON]->(pi:PhysicalInfra)
+    WITH bre, pi, count(DISTINCT s) AS affectedServiceCount, collect(s.name) AS affectedServices
+    WHERE affectedServiceCount > 1
+    
+    // 5. Assign Root Cause
+    MERGE (bre)-[:PRIMARY_CAUSE]->(pi)
+    SET bre.confidenceScore = 0.95
+    RETURN bre.id AS BlastRadiusEvent, pi.id AS RootCause, affectedServices
+    ORDER BY affectedServiceCount DESC LIMIT 1
+  `;
+  
+  try {
+    await executeQuery(query, {});
+  } catch (err) {
+    console.error('[BlastRadius] Failed to evaluate blast radius clusters:', err);
+  }
+}
+
+export async function checkWebhookDelivery(deliveryId: string): Promise<boolean> {
+  // Returns true if this is a NEW delivery, false if it's a REPLAY
+  const query = `
+    OPTIONAL MATCH (existing:WebhookDelivery { id: $deliveryId })
+    WITH existing IS NOT NULL AS exists
+    MERGE (w:WebhookDelivery { id: $deliveryId })
+    ON CREATE SET w.timestamp = datetime()
+    RETURN NOT exists AS isNew
+  `;
+  const result = await executeQuery(query, { deliveryId });
+  if (result.records.length === 0) return true;
+  return result.records[0].get('isNew');
+}

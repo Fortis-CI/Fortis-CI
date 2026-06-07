@@ -11,6 +11,12 @@ CREATE CONSTRAINT file_id IF NOT EXISTS FOR (f:File) REQUIRE f.id IS UNIQUE;
 CREATE CONSTRAINT env_snapshot_id IF NOT EXISTS FOR (e:EnvSnapshot) REQUIRE e.id IS UNIQUE;
 CREATE CONSTRAINT rollbackevent_id IF NOT EXISTS FOR (r:RollbackEvent) REQUIRE r.id IS UNIQUE;
 
+// V2 Blast Radius Schema Extension
+CREATE CONSTRAINT logical_res_id IF NOT EXISTS FOR (l:LogicalResource) REQUIRE l.id IS UNIQUE;
+CREATE CONSTRAINT physical_infra_id IF NOT EXISTS FOR (p:PhysicalInfra) REQUIRE p.id IS UNIQUE;
+CREATE CONSTRAINT blast_radius_id IF NOT EXISTS FOR (b:BlastRadiusEvent) REQUIRE b.id IS UNIQUE;
+CREATE CONSTRAINT environment_name IF NOT EXISTS FOR (e:Environment) REQUIRE e.name IS UNIQUE;
+
 // ─── Indexes (Fast lookup for dashboard queries) ───────────────────────────
 CREATE INDEX deployment_status IF NOT EXISTS FOR (d:Deployment) ON (d.status);
 CREATE INDEX deployment_completed_at IF NOT EXISTS FOR (d:Deployment) ON (d.completedAt);

@@ -41,6 +41,7 @@ export interface Deployment {
   serviceId: string;
   riskScore?: number;
   riskLabel?: string;
+  hasStatefulChanges?: boolean;
 }
 
 export interface CreateDeploymentInput {
@@ -108,4 +109,37 @@ export interface DeploymentWithCommit extends Deployment {
   commit: Commit | null;
   service?: Service | null;
   errorPattern?: ErrorPattern | null;
+}
+
+// ─── GitOps & Rollout ───────────────────────────────────────────────────────
+
+export type RolloutStatus = 'progressing' | 'sync_complete' | 'success' | 'failed';
+
+export interface Artifact {
+  tag: string;
+}
+
+export interface InfraCommit {
+  sha: string;
+}
+
+export type FailureCategory = 'APPLICATION_FAILURE' | 'DEPLOYMENT_FAILURE' | 'INFRASTRUCTURE_FAILURE' | null;
+
+export interface Rollout {
+  id: string;
+  status: RolloutStatus;
+  startedAt: string;
+  completedAt: string | null;
+  durationMs: number | null;
+  failureCategory?: FailureCategory;
+  rootCauseCommit?: string;
+  confidenceScore?: number;
+}
+
+export interface HealthIncident {
+  id: string;
+  timestamp: string;
+  failureCategory?: FailureCategory;
+  rootCauseCommit?: string;
+  confidenceScore?: number;
 }

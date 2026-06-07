@@ -1,0 +1,67 @@
+name: Deploy Infrastructure
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'terraform-aws-fortis-ci/**'
+
+jobs:
+  terraform:
+    name: 'Terraform Plan and Apply'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform-aws-fortis-ci
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.5.0
+
+    - name: Terraform Format
+      id: fmt
+      run: terraform fmt -check
+
+    - name: Terraform Init
+      id: init
+      run: terraform init
+
+    - name: Terraform Validate
+      id: validate
+      run: terraform validate -no-color
+
+    - name: Terraform Plan
+      id: plan
+      run: terraform plan -no-color
+      env:
+        TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
+        TF_VAR_github_webhook_secret: ${{ secrets.TF_VAR_GITHUB_WEBHOOK_SECRET }}
+        TF_VAR_sentinel_license_key: ${{ secrets.TF_VAR_SENTINEL_LICENSE_KEY }}
+        TF_VAR_services_yaml_content: ${{ secrets.TF_VAR_SERVICES_YAML_CONTENT }}
+        TF_VAR_vpc_id: ${{ secrets.TF_VAR_VPC_ID }}
+        TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
+
+    - name: Terraform Apply
+      id: apply
+      if: github.ref == 'refs/heads/main'
+      run: terraform apply -auto-approve
+      env:
+        TF_VAR_github_token: ${{ secrets.TF_VAR_GITHUB_TOKEN }}
+        TF_VAR_github_webhook_secret: ${{ secrets.TF_VAR_GITHUB_WEBHOOK_SECRET }}
+        TF_VAR_sentinel_license_key: ${{ secrets.TF_VAR_SENTINEL_LICENSE_KEY }}
+        TF_VAR_services_yaml_content: ${{ secrets.TF_VAR_SERVICES_YAML_CONTENT }}
+        TF_VAR_vpc_id: ${{ secrets.TF_VAR_VPC_ID }}
+        TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}

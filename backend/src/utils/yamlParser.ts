@@ -1,6 +1,6 @@
 import fs from 'fs';
 import yaml from 'js-yaml';
-import { createService, createDependsOn } from '../services/graphService';
+import { createService, createDependsOnService, createLogicalResource, createDependsOnResource } from '../services/graphService';
 
 export async function importYamlServices(filePath: string) {
   // 1. Check if passed via Environment Variable first (Terraform preferred)
@@ -49,13 +49,29 @@ async function parseYamlString(yamlString: string) {
           environment: svc.environment || 'production',
         });
 
-        // Create dependencies
-        if (svc.dependencies && Array.isArray(svc.dependencies)) {
-          for (const dep of svc.dependencies) {
-            try {
-              await createDependsOn(service.id, dep);
-            } catch {
-              // Ignore failure (dependency might not exist yet)
+        // Parse dependencies
+        if (svc.dependencies) {
+          // 1. Service Dependencies
+          if (svc.dependencies.services && Array.isArray(svc.dependencies.services)) {
+            for (const depSvc of svc.dependencies.services) {
+              try {
+                const criticality = depSvc.criticality === 'soft' ? 'soft' : 'hard';
+                await createDependsOnService(service.id, depSvc.name, criticality);
+              } catch (err) {
+                console.warn(`[Service] Failed to create service dependency ${depSvc.name}:`, err);
+              }
+            }
+          }
+
+          // 2. Resource Dependencies
+          if (svc.dependencies.resources && Array.isArray(svc.dependencies.resources)) {
+            for (const depRes of svc.dependencies.resources) {
+              try {
+                await createLogicalResource(depRes.name, depRes.type || 'unknown');
+                await createDependsOnResource(service.id, depRes.name);
+              } catch (err) {
+                console.warn(`[Service] Failed to create resource dependency ${depRes.name}:`, err);
+              }
             }
           }
         }

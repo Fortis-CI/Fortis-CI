@@ -27,7 +27,7 @@ export function verifyWebhookSignature(payload: Buffer, signature: string | unde
   const expectedSignature =
     'sha256=' +
     crypto
-      .createHmac('sha256', config.GITHUB_WEBHOOK_SECRET)
+      .createHmac('sha256', config.GITHUB_WEBHOOK_SECRET || '')
       .update(payload)
       .digest('hex');
 

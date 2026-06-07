@@ -1,7 +1,18 @@
 import { Router } from 'express';
-import { getServiceDependenciesGraph, getDeploymentChainGraph } from '../services/graphVisualizer';
+import { getServiceDependenciesGraph, getDeploymentChainGraph, getBlastRadiusGraph } from '../services/graphVisualizer';
 
 const router = Router();
+
+// GET /api/graph/blast-radius
+router.get('/blast-radius', async (req, res) => {
+  try {
+    const graphData = await getBlastRadiusGraph();
+    res.json({ data: graphData });
+  } catch (err) {
+    console.error('[graph.routes] Error fetching blast radius graph:', err);
+    res.status(500).json({ error: 'Failed to fetch graph data' });
+  }
+});
 
 // GET /api/graph/service-dependencies
 router.get('/service-dependencies', async (req, res) => {

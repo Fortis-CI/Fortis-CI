@@ -2,6 +2,7 @@ import {
   findLastHealthyDeployment,
   createRollbackEvent,
   getServiceById,
+  getDeploymentById,
 } from './graphService';
 import { rerunWorkflow, parseRepoUrl } from './github.service';
 import { sendSlackAlert, sendPRComment, sendEmailAlert } from './notifications';
@@ -26,6 +27,14 @@ export async function triggerRollback(
   const lastRollback = rollbackCooldowns.get(serviceId);
   if (lastRollback && Date.now() - lastRollback < COOLDOWN_MS) {
     console.warn(`[RollbackEngine] Rollback aborted: Service ${serviceId} is currently in a 15-minute cooldown.`);
+    return;
+  }
+
+  // --- Rule 1.5: Stateful Changes Check ---
+  const failedDeployment = await getDeploymentById(failedDeploymentId);
+  if (failedDeployment?.hasStatefulChanges) {
+    console.error(`[RollbackEngine] Rollback aborted: Deployment ${failedDeploymentId} contains stateful changes. Manual intervention required.`);
+    await sendSlackAlert(`CRITICAL: Rollback aborted for ${serviceId}. Deployment contains stateful changes (e.g. database migrations) and cannot be safely rolled back automatically.`, failedDeploymentId);
     return;
   }
 

@@ -53,6 +53,14 @@ resource "aws_ecs_task_definition" "fortis_ci" {
       portMappings = [{ containerPort = 6379 }]
     },
     {
+      name      = "frontend"
+      image     = "ganeshak11/fortis-ci-frontend:v4.0.0"
+      cpu       = 256
+      memory    = 512
+      essential = true
+      portMappings = [{ containerPort = 3000 }]
+    },
+    {
       name      = "backend"
       image     = "ganeshak11/fortis-ci-backend:v4.0.0"
       cpu       = 512

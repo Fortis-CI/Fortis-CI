@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
 export default function SetupPage() {
@@ -51,7 +51,7 @@ export default function SetupPage() {
       <div style={{ textAlign: 'center', marginBottom: 32 }}>
         <h1 style={{ marginBottom: 16 }}>Welcome to Fortis-CI</h1>
         <p style={{ color: 'var(--text-muted)' }}>
-          Let's get your enterprise deployment intelligence up and running.
+          Let&apos;s get your enterprise deployment intelligence up and running.
         </p>
       </div>
 
