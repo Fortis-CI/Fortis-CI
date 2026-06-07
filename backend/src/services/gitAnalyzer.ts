@@ -48,7 +48,7 @@ export async function analyzeGitDiff(
     
     // --- Layer 1 Heuristic Risk Scoring ---
     const riskResult = calculateRiskScore(fileNames);
-    let score = riskResult.score;
+    score = riskResult.score;
     let label = riskResult.level as string;
 
     // --- Layer 2: Graph-Enhanced Risk Scoring ---

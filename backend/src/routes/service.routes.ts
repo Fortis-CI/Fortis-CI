@@ -13,7 +13,7 @@ import {
   getAllServices,
   getServiceById,
   createService,
-  createDependsOn,
+  createDependsOnService,
   deleteService,
 } from '../services/graphService';
 import { getMaxServicesAllowed } from '../services/license.service';
@@ -78,7 +78,7 @@ router.post('/', async (req, res) => {
     if (dependencies && Array.isArray(dependencies)) {
       for (const depName of dependencies) {
         try {
-          await createDependsOn(service.id, depName);
+          await createDependsOnService(service.id, depName, 'hard');
           console.log(`[Service] Linked ${name} -> DEPENDS_ON -> ${depName}`);
         } catch (depErr) {
           console.warn(`[Service] Could not link dependency ${depName}:`, depErr);
@@ -132,7 +132,7 @@ router.post('/import', async (req, res) => {
         const deps = svc.dependencies || [];
         for (const depName of deps) {
           try {
-            await createDependsOn(service.id, depName);
+            await createDependsOnService(service.id, depName, 'hard');
           } catch {
             // Non-fatal — dependency might not be registered yet
           }

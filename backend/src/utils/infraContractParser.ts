@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { createPhysicalInfra, linkHostedOn } from './graphService';
+import { createPhysicalInfra, linkHostedOn } from '../services/graphService';
 
 export async function importInfraContract(filePath: string) {
   if (!fs.existsSync(filePath)) {
