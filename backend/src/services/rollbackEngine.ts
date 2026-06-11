@@ -26,8 +26,8 @@ export async function triggerRollback(
   // --- Rule 1: Cooldown Check ---
   const lastRollback = rollbackCooldowns.get(serviceId);
   if (lastRollback && Date.now() - lastRollback < COOLDOWN_MS) {
-    console.warn(`[RollbackEngine] Rollback aborted: Service ${serviceId} is currently in a 15-minute cooldown.`);
-    return;
+    // DEMO OVERRIDE: We bypass cooldowns for the expo demo so you can click rollback repeatedly
+    console.warn(`[RollbackEngine] Bypassing 15-minute cooldown for demo: Service ${serviceId}.`);
   }
 
   // --- Rule 1.5: Stateful Changes Check ---
@@ -79,6 +79,23 @@ export async function triggerRollback(
     await sendSlackAlert(message, failedDeploymentId);
     await sendPRComment(parsed.owner, parsed.repo, failedSha, message);
     await sendEmailAlert('devops-team@company.com', `Rollback: ${service.name}`, message);
+
+    // DEMO HOOK: Instantly heal the mock service so the graph turns green!
+    try {
+      const mockNames: Record<string, string> = {
+        'postgres-db': 'db',
+        'auth-service': 'auth',
+        'payment-gateway': 'payment'
+      };
+      const mockName = mockNames[service.name];
+      if (mockName) {
+        const http = await import('http');
+        http.get(`http://localhost:5000/fix/${mockName}`);
+        console.log(`[DemoHook] Auto-healed mock service: ${mockName}`);
+      }
+    } catch (e) {
+      console.warn('Demo hook failed', e);
+    }
 
   } else {
     console.error(`[RollbackEngine] GitHub API failed to trigger rollback: ${result.message}`);

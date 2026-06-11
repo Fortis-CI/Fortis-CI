@@ -18,7 +18,7 @@ import { cacheHealthStatus } from '../db/redis';
 import { HealthStatus, Deployment } from '../types/deployment.types';
 import { triggerRollback } from './rollbackEngine';
 
-const PING_INTERVAL = 60 * 1000; // 60 seconds
+const PING_INTERVAL = 10 * 1000; // 60 seconds
 
 // Track consecutive failures per service for Tier 1 Rollback
 const consecutiveFailures = new Map<string, number>();
@@ -115,13 +115,13 @@ async function checkServiceHealth(
     const fails = (consecutiveFailures.get(serviceId) || 0) + 1;
     consecutiveFailures.set(serviceId, fails);
     
-    if (fails >= 3 && latestDeployment?.id) {
-      console.log(`[HealthWorker] Service ${serviceName} failed 3 checks in a row! Triggering Tier 1 Rollback.`);
+    if (fails >= 1 && latestDeployment?.id) {
+      console.log(`[HealthWorker] Service ${serviceName} failed a health check! Triggering Tier 1 Rollback.`);
       triggerRollback(
         serviceId,
         latestDeployment.id,
         'unknown', // Commit sha is not readily available here without an extra query
-        'Service failed 3 consecutive health checks'
+        'Service failed 1 health check'
       ).catch(err => console.error('[HealthWorker] Failed to trigger rollback:', err));
     }
   } else if (status === 'healthy') {
@@ -207,8 +207,8 @@ export async function startHealthWorker(): Promise<void> {
   // Run immediately on startup
   await runHealthCheckCycle();
 
-  // Schedule recurring check
-  cron.schedule('* * * * *', async () => {
+  // Schedule recurring check (every 10 seconds for the demo)
+  cron.schedule('*/10 * * * * *', async () => {
     await runHealthCheckCycle();
   });
 }

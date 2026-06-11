@@ -110,7 +110,7 @@ export default function Dashboard() {
           <div className="stat-subtitle">Services needing attention</div>
         </div>
 
-        <div className="stat-card accent-cyan">
+        <div className="stat-card accent-gold">
           <div className="stat-label">Recent Deploys</div>
           <div className="stat-value">{recentDeployments}</div>
           <div className="stat-subtitle">

@@ -289,8 +289,8 @@ export default function DeploymentDetailPage() {
               <h2 style={{ margin: 0 }}>Confirm Rollback</h2>
             </div>
             <div style={{ padding: '24px 0' }}>
-              {!rollbackPreview ? (
-                <p style={{ color: 'var(--status-degraded)' }}>No healthy deployment found to rollback to.</p>
+              {!rollbackPreview || !rollbackPreview.targetSha ? (
+                <p style={{ color: 'var(--status-degraded)' }}>No previous healthy deployment found to rollback to.</p>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -299,7 +299,7 @@ export default function DeploymentDetailPage() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Files Reverted:</span>
-                    <span>{rollbackPreview.filesChanged?.toNumber ? rollbackPreview.filesChanged.toNumber() : rollbackPreview.filesChanged} files</span>
+                    <span>{rollbackPreview.filesChanged?.low !== undefined ? rollbackPreview.filesChanged.low : rollbackPreview.filesChanged} files</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ color: 'var(--text-muted)' }}>Health Delta:</span>

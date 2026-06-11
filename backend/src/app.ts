@@ -109,12 +109,12 @@ async function start() {
 
     // 4. Auto-import services from YAML (if present)
     await importYamlServices('/app/config/services.yml');
-    await importYamlServices('../sentinel-services.example.yml'); // Fallback for local testing
-    await importYamlServices('/home/ganeshak11/dev/ticketflow/services.yml');
+    // await importYamlServices('../sentinel-services.example.yml'); // Fallback for local testing
+    // await importYamlServices('/home/ganeshak11/dev/ticketflow/services.yml');
 
     // 4.5 Auto-import infra contract
     const { importInfraContract } = await import('./utils/infraContractParser');
-    await importInfraContract('/home/ganeshak11/dev/ticketflow/ticketflow-infra/outputs.json');
+    // await importInfraContract('/home/ganeshak11/dev/ticketflow/ticketflow-infra/outputs.json');
 
     // 5. Start health worker (60s polling cron)
     await startHealthWorker();
@@ -125,7 +125,7 @@ async function start() {
       console.log('┌─────────────────────────────────────────────────┐');
       console.log('│           Fortis-CI Backend v1.0.0              │');
       console.log('├─────────────────────────────────────────────────┤');
-      console.log(`│  Server:    http://0.0.0.0:${config.PORT}       │`);
+      console.log(`│  Server:    http://0.0.0.0:${config.PORT}                 │`);
       console.log(`│  Webhook:   POST /webhooks/github               │`);
       console.log(`│  API:       /api/services, /api/deployments     │`);
       console.log(`│  Health:    /api/health-status                  │`);

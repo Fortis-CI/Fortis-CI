@@ -74,7 +74,7 @@ export async function getServiceById(id: string): Promise<ServiceWithHealth | nu
   const query = `
     MATCH (s:Service { id: $id })
     OPTIONAL MATCH (d:Deployment)-[:DEPLOYED_TO]->(s)
-    OPTIONAL MATCH (d)-[:HAS_HEALTH]->(h:HealthCheck)
+    OPTIONAL MATCH (s)-[:HAS_HEALTH]->(h:HealthCheck)
     WITH s, d, h
     ORDER BY d.startedAt DESC, h.checkedAt DESC
     WITH s, collect(d)[0] AS latestDeployment, collect(h)[0] AS latestHealth
@@ -100,7 +100,7 @@ export async function getAllServices(): Promise<ServiceWithHealth[]> {
   const query = `
     MATCH (s:Service)
     OPTIONAL MATCH (d:Deployment)-[:DEPLOYED_TO]->(s)
-    OPTIONAL MATCH (d)-[:HAS_HEALTH]->(h:HealthCheck)
+    OPTIONAL MATCH (s)-[:HAS_HEALTH]->(h:HealthCheck)
     WITH s, d, h
     ORDER BY d.startedAt DESC, h.checkedAt DESC
     WITH s, collect(d)[0] AS latestDeployment, collect(h)[0] AS latestHealth
@@ -542,7 +542,7 @@ export async function findLastHealthyDeployment(serviceId: string): Promise<Depl
   const query = `
     MATCH (d:Deployment)-[:DEPLOYED_TO]->(s:Service { id: $serviceId })
     OPTIONAL MATCH (d)-[:CAUSED_ERROR]->(e:ErrorPattern)
-    OPTIONAL MATCH (d)-[:HAS_HEALTH]->(h:HealthCheck)
+    OPTIONAL MATCH (s)-[:HAS_HEALTH]->(h:HealthCheck)
     WITH d, e, h
     ORDER BY h.checkedAt DESC
     WITH d, collect(e) as errors, collect(h)[0] as latestHealth
@@ -630,7 +630,7 @@ export async function getRollbackPreview(deploymentId: string): Promise<any> {
     OPTIONAL MATCH (good)-[:BASED_ON]->(goodC:Commit)
     
     // Blast radius
-    OPTIONAL MATCH (s)<-[:DEPENDS_ON]-(dep:Service)
+    OPTIONAL MATCH (s)<-[:DEPENDS_ON_SERVICE]-(dep:Service)
     WITH bad, s, filesChanged, good, goodC, collect(dep.name) as blastRadius
     
     RETURN {
