@@ -821,3 +821,40 @@ export async function checkWebhookDelivery(deliveryId: string): Promise<boolean>
   if (result.records.length === 0) return true;
   return result.records[0].get('isNew');
 }
+
+/**
+ * Fetch comparison data between two specific deployments.
+ */
+export async function getDeploymentComparison(id: string, prevId: string): Promise<any> {
+  const query = `
+    MATCH (curr:Deployment { id: $id })
+    OPTIONAL MATCH (curr)-[:BASED_ON]->(currC:Commit)-[r1:CHANGED_FILE]->(currF:File)
+    OPTIONAL MATCH (curr)-[:HAS_ENV]->(currEnv:EnvSnapshot)
+    OPTIONAL MATCH (curr)-[:CAUSED_ERROR]->(currErr:ErrorPattern)
+    
+    MATCH (prev:Deployment { id: $prevId })
+    OPTIONAL MATCH (prev)-[:BASED_ON]->(prevC:Commit)-[r2:CHANGED_FILE]->(prevF:File)
+    OPTIONAL MATCH (prev)-[:HAS_ENV]->(prevEnv:EnvSnapshot)
+    
+    RETURN 
+      curr, currEnv, collect(DISTINCT {file: currF, status: r1.status}) as currFiles, collect(DISTINCT currErr) as currErrors,
+      prev, prevEnv, collect(DISTINCT {file: prevF, status: r2.status}) as prevFiles
+  `;
+  const result = await executeQuery(query, { id, prevId });
+  if (result.records.length === 0) return null;
+  
+  const record = result.records[0];
+  
+  const mapFiles = (arr: any[]) => 
+    arr.filter(f => f.file).map(f => ({ ...f.file.properties, status: f.status }));
+    
+  return {
+    curr: record.get('curr')?.properties,
+    currEnv: record.get('currEnv')?.properties,
+    currFiles: mapFiles(record.get('currFiles')),
+    currErrors: record.get('currErrors').filter((e: any) => e).map((e: any) => e.properties),
+    prev: record.get('prev')?.properties,
+    prevEnv: record.get('prevEnv')?.properties,
+    prevFiles: mapFiles(record.get('prevFiles'))
+  };
+}

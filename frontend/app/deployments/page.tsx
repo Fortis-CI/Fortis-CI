@@ -15,10 +15,11 @@ function formatTimeAgo(dateStr: string): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+function formatDuration(seconds: any): string {
+  if (seconds == null || isNaN(Number(seconds))) return '—';
+  const num = Number(seconds);
+  if (num < 60) return `${num}s`;
+  return `${Math.floor(num / 60)}m ${num % 60}s`;
 }
 
 export default function DeploymentsPage() {

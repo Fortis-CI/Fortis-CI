@@ -1,6 +1,6 @@
 # Fortis-CI — Product Requirements Document
 
-![Version](https://img.shields.io/badge/version-v1.0--See%20Everything-blueviolet)
+![Version](https://img.shields.io/badge/version-v1.0.0-blueviolet)
 ![Type](https://img.shields.io/badge/type-Self--Hosted%20OSS%20DevOps%20Tool-green)
 ![Status](https://img.shields.io/badge/status-In%20Development-yellow)
 ![Database](https://img.shields.io/badge/database-Neo4j%20Graph-blue)
@@ -1075,14 +1075,7 @@ The repository maintainer owns the `main` branch health, reviews PRs, and makes 
 
 > **Fortis-CI** is a self-hosted, Neo4j-powered intelligent deployment observability platform for engineering teams who care about deployment reliability without enterprise complexity.
 
-Built in 4 versions:
-
-| Version | Tagline | Core Value |
-|---|---|---|
-| **V1** | See Everything | Know what's deployed and if it's healthy |
-| **V2** | Fix Faster | Know what broke and recover in 60 seconds |
-| **V3** | Prevent Failures | Know what's risky before you push |
-| **V4** | Ship at Scale | Production-ready for teams |
+| **v1.0.0** | Includes features from previous roadmap phases (visibility, automated rollbacks, RCA, risk scoring, scale features). |
 
 When your deployment breaks at 3am, you don't want 50 dashboards.
 

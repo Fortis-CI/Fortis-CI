@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an idea for CI/CD Sentinel
+about: Suggest an idea for Fortis-CI
 title: "[FEATURE] "
 labels: enhancement
 assignees: ''

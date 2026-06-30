@@ -108,6 +108,15 @@ export async function fetchEnvDrift(id: string): Promise<{ added: string[], remo
   }
 }
 
+export async function fetchDeploymentComparison(id: string, prevId: string = 'previous'): Promise<any> {
+  try {
+    const res = await apiFetch<ApiResponse<any>>(`/api/deployments/${id}/compare/${prevId}`);
+    return res.data;
+  } catch (err) {
+    return null;
+  }
+}
+
 export async function fetchRollbackPreview(id: string): Promise<any> {
   try {
     const res = await apiFetch<ApiResponse<any>>(`/api/deployments/${id}/rollback-preview`);

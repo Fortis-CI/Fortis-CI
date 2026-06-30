@@ -9,7 +9,7 @@
  */
 
 import { Router } from 'express';
-import { getDeployments, getDeploymentById, getRollbackPreview } from '../services/graphService';
+import { getDeployments, getDeploymentById, getRollbackPreview, getDeploymentComparison } from '../services/graphService';
 import { rerunWorkflow, parseRepoUrl } from '../services/github.service';
 import { getEnvDriftForDeployment } from '../services/envDrift.service';
 import { triggerRollback } from '../services/rollbackEngine';
@@ -117,6 +117,35 @@ router.get('/:id/env-drift', async (req, res) => {
   } catch (err) {
     console.error('[deployment.routes] GET /deployments/:id/env-drift error:', err);
     res.status(500).json({ error: 'Failed to fetch env drift' });
+  }
+});
+
+// GET /api/deployments/:id/compare/:prevId
+router.get('/:id/compare/:prevId', async (req, res) => {
+  try {
+    let prevId = req.params.prevId;
+    
+    // If prevId is 'previous', find the immediate preceding deployment
+    if (prevId === 'previous') {
+      const history = await getDeployments(undefined, 50, 0); // Fetch recent deployments
+      const currIndex = history.findIndex(d => d.id === req.params.id);
+      if (currIndex !== -1 && currIndex + 1 < history.length) {
+        prevId = history[currIndex + 1].id;
+      } else {
+        res.status(404).json({ error: 'No previous deployment found' });
+        return;
+      }
+    }
+
+    const comparison = await getDeploymentComparison(req.params.id, prevId);
+    if (!comparison) {
+      res.status(404).json({ error: 'Deployments not found for comparison' });
+      return;
+    }
+    res.json({ data: comparison });
+  } catch (err) {
+    console.error('[deployment.routes] GET /deployments/:id/compare/:prevId error:', err);
+    res.status(500).json({ error: 'Failed to fetch deployment comparison' });
   }
 });
 

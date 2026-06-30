@@ -12,10 +12,11 @@ function formatDate(dateStr: string | null): string {
   return new Date(dateStr).toLocaleString();
 }
 
-function formatDuration(seconds: number | null): string {
-  if (!seconds) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+function formatDuration(seconds: any): string {
+  if (seconds == null || isNaN(Number(seconds))) return '—';
+  const num = Number(seconds);
+  if (num < 60) return `${num}s`;
+  return `${Math.floor(num / 60)}m ${num % 60}s`;
 }
 
 export default function DeploymentDetailPage() {
@@ -121,6 +122,9 @@ export default function DeploymentDetailPage() {
           </button>
           <button className="btn btn-secondary" onClick={handleRollbackClick} disabled={redeploying}>
             {redeploying ? 'Triggering...' : 'Rollback Preview'}
+          </button>
+          <button className="btn btn-secondary" onClick={() => router.push(`/deployments/${id}/compare`)}>
+            Compare to Previous
           </button>
           <button
             className="btn btn-primary btn-sm"

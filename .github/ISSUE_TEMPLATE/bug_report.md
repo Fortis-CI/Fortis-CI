@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve CI/CD Sentinel
+about: Create a report to help us improve Fortis-CI
 title: "[BUG] "
 labels: bug
 assignees: ''

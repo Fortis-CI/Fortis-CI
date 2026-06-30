@@ -1,6 +1,6 @@
 # Fortis-CI — Architecture Document
 
-![Version](https://img.shields.io/badge/version-V1--See%20Everything-blueviolet)
+![Version](https://img.shields.io/badge/version-v1.0.0-blueviolet)
 ![Deployment](https://img.shields.io/badge/deployment-Self--Hosted%20OSS-green)
 ![Status](https://img.shields.io/badge/status-In%20Development-yellow)
 
@@ -609,10 +609,7 @@ SENTINEL_LICENSE_KEY=ENT-xxxx-xxxx
 
 | Version | Tagline | Ships |
 |---|---|---|
-| **V1 — See Everything** | Know what's deployed and if it's healthy | Webhook ingestion, deployment graph, health monitoring, basic dashboard, redeploy |
-| **V2 — Fix Faster** | Know what broke and recover in 60 seconds | LogFetchJob, RCA engine, git diff, deployment comparison, automated rollback, notifications, risk scoring |
-| **V3 — Prevent Failures** | Know what's risky before you push | Graph-enhanced risk scoring, env drift, graph visualization, rollback preview, blast radius, PR governance |
-| **V4 — Ship at Scale** | Production-ready for teams | Enterprise license, performance hardening, Helm chart, meta-demo, install wizard |
+| **v1.0.0** | Includes features from previous roadmap phases (visibility, automated rollbacks, RCA, risk scoring, scale features). |
 
 ## 11. Post-V4 Roadmap
 

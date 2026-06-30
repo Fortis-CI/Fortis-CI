@@ -1,9 +1,9 @@
 # Fortis-CI
 
-![Version](https://img.shields.io/badge/version-V1--See%20Everything-blueviolet)
+![Version](https://img.shields.io/badge/version-v1.0.0-blueviolet)
 ![Database](https://img.shields.io/badge/database-Neo4j%20Graph-blue)
 ![Type](https://img.shields.io/badge/type-Self--Hosted%20OSS-green)
-![Status](https://img.shields.io/badge/status-In%20Development-yellow)
+![Status](https://img.shields.io/badge/status-Released-green)
 
 > **Not your CI. Your CI’s brain.**
 >
@@ -42,20 +42,17 @@ The entire deployment lifecycle — services, deployments, commits, files, error
 
 ---
 
-## Version Roadmap
+## Features included in v1.0.0
 
-| Version | Tagline | Core Value |
-|---|---|---|
-| **V1 — See Everything** | ✅ In Development | Know what's deployed and if it's healthy |
-| **V2 — Fix Faster** | 🔜 Planned | Know what broke and recover in 60 seconds |
-| **V3 — Prevent Failures** | 🔜 Planned | Know what's risky before you push |
-| **V4 — Ship at Scale** | 🔜 Planned | Production-ready for teams |
+| Feature | Description |
+|---|---|
+| **See Everything** | Know what's deployed and if it's healthy |
+| **Fix Faster** | Know what broke and recover in 60 seconds with automated rollbacks and RCA |
+| **Prevent Failures** | Know what's risky before you push with risk scoring |
+| **Ship at Scale** | Production-ready for teams with full GitHub Action integration |
 
-Each version is a complete, independently shippable product.
+All of the above features are shipped in **v1.0.0**.
 
-> **Scope note:** V1 ships **manual redeploy** only (trigger a re-run of a previous workflow). **Automated rollback** (health-triggered, with RCA and notifications) ships in V2.
-
----
 
 ## Tech Stack
 
@@ -147,7 +144,7 @@ open http://localhost:3000
 2. Register your services:
    - **Single service:** Use the UI at `/services/new` (name, repo URL, health endpoint, dependencies)
    - **Bulk import:** Create a `fortis-ci-services.yml` and run `fortis-ci import --file fortis-ci-services.yml`
-   - **Auto-discovery (V2+):** Connect your GitHub Org and select repos from a checklist
+   - **Auto-discovery:** Connect your GitHub Org and select repos from a checklist
 3. Add the GitHub webhook (choose one):
    - **Per-repo:** GitHub repo → Settings → Webhooks → Add webhook
    - **Organization-level (recommended for multi-repo):** GitHub Org → Settings → Webhooks → Add webhook once for all repos
