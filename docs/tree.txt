@@ -1,0 +1,145 @@
+.
+├── backend
+│   ├── Dockerfile
+│   ├── .env
+│   ├── .env.example
+│   ├── .eslintrc.json
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── src
+│   │   ├── app.ts
+│   │   ├── config
+│   │   │   └── env.ts
+│   │   ├── controllers
+│   │   │   ├── argocd.controller.ts
+│   │   │   └── webhook.controller.ts
+│   │   ├── db
+│   │   │   ├── applySchema.ts
+│   │   │   ├── index.ts
+│   │   │   ├── redis.ts
+│   │   │   └── schema.cypher
+│   │   ├── routes
+│   │   │   ├── deployment.routes.ts
+│   │   │   ├── graph.routes.ts
+│   │   │   ├── health.routes.ts
+│   │   │   ├── service.routes.ts
+│   │   │   ├── setup.routes.ts
+│   │   │   └── webhook.routes.ts
+│   │   ├── services
+│   │   │   ├── deployment.service.ts
+│   │   │   ├── envDrift.service.ts
+│   │   │   ├── gitAnalyzer.ts
+│   │   │   ├── github.service.ts
+│   │   │   ├── governance.ts
+│   │   │   ├── graphService.ts
+│   │   │   ├── graphVisualizer.ts
+│   │   │   ├── health.service.ts
+│   │   │   ├── healthWorker.ts
+│   │   │   ├── license.service.ts
+│   │   │   ├── logFetcher.ts
+│   │   │   ├── notifications.ts
+│   │   │   ├── rcaClassifier.ts
+│   │   │   ├── rcaEngine.ts
+│   │   │   └── rollbackEngine.ts
+│   │   ├── types
+│   │   │   ├── deployment.types.ts
+│   │   │   └── webhook.types.ts
+│   │   └── utils
+│   │       ├── encryption.ts
+│   │       ├── infraContractParser.ts
+│   │       ├── logger.ts
+│   │       ├── riskScorer.ts
+│   │       ├── webhookVerify.ts
+│   │       └── yamlParser.ts
+│   └── tsconfig.json
+├── CODE_OF_CONDUCT.md
+├── CONTRIBUTING.md
+├── docker-compose.yml
+├── docs
+│   ├── api_reference.md
+│   ├── API_REFERENCE.md
+│   ├── architecture.md
+│   ├── GITOPS_ARCHITECTURE.md
+│   ├── lifecycle.md
+│   ├── PRD.md
+│   ├── project_checklist.md
+│   ├── reviews
+│   │   ├── fortis_ci_deployment_runbook.md
+│   │   ├── fortis_ci_graph_philosophy.md
+│   │   ├── fortis_ci_launch_criteria.md
+│   │   ├── fortis_ci_operational_details.md
+│   │   ├── fortis_ci_production_readiness.md
+│   │   ├── fortis_ci_technical_overview.md
+│   │   ├── fortis_ci_ticketflow_integration.md
+│   │   └── fortis_ci_verification.md
+│   └── TROUBLESHOOTING.md
+├── frontend
+│   ├── app
+│   │   ├── api
+│   │   │   └── health
+│   │   │       └── route.ts
+│   │   ├── deployments
+│   │   │   ├── [id]
+│   │   │   │   ├── compare
+│   │   │   │   │   └── page.tsx
+│   │   │   │   └── page.tsx
+│   │   │   └── page.tsx
+│   │   ├── globals.css
+│   │   ├── graph
+│   │   │   └── page.tsx
+│   │   ├── layout.tsx
+│   │   ├── page.tsx
+│   │   ├── services
+│   │   │   ├── new
+│   │   │   │   └── page.tsx
+│   │   │   └── page.tsx
+│   │   └── setup
+│   │       └── page.tsx
+│   ├── components
+│   │   ├── HealthBadge.tsx
+│   │   ├── RiskBadge.tsx
+│   │   ├── SetupGuard.tsx
+│   │   ├── Sidebar.tsx
+│   │   └── StatusBadge.tsx
+│   ├── Dockerfile
+│   ├── .env.local
+│   ├── .eslintrc.json
+│   ├── next.config.js
+│   ├── next-env.d.ts
+│   ├── package.json
+│   ├── package-lock.json
+│   ├── public
+│   │   └── logo.png
+│   ├── services
+│   │   └── api.ts
+│   ├── tsconfig.json
+│   └── types
+│       └── deployment.ts
+├── .github
+│   ├── ISSUE_TEMPLATE
+│   │   ├── bug_report.md
+│   │   └── feature_request.md
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── workflows
+│       ├── deploy-backend.yml
+│       ├── deploy-frontend.yml
+│       └── deploy-infrastructure.yml
+├── .gitignore
+├── LICENSE
+├── .prettierignore
+├── .prettierrc
+├── push.ps1
+├── push.sh
+├── README.md
+├── ROADMAP.md
+├── SECURITY.md
+├── sentinel-services.example.yml
+├── services.example.yml
+├── terraform-aws-fortis-ci
+│   ├── main.tf
+│   ├── outputs.tf
+│   ├── README.md
+│   └── variables.tf
+└── tree.txt
+
+30 directories, 112 files
