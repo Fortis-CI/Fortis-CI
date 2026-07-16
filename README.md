@@ -312,6 +312,13 @@ Enterprise features are gated via `SENTINEL_LICENSE_KEY`. The core platform alwa
 
 ---
 
+## 👨‍💻 Maintainer
+
+**Ganesh Angadi**
+- 🐙 GitHub: [@ganeshak11](https://github.com/ganeshak11)
+- 🌐 Portfolio: [ganeshangadi.online](https://ganeshangadi.online)
+- 💼 LinkedIn: [Ganesh Angadi](https://linkedin.com/in/ganeshangadi1301)
+
 ---
 
 ## License
